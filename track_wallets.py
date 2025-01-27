@@ -1,12 +1,12 @@
 from telethon import TelegramClient, events
 import re
 
-# Telegram API configuration
-api_id = "REDACTED"  # Your Telegram API ID
-api_hash = "REDACTED"  # Your Telegram API Hash
-channel_ids = [-1002450316172, 6521948333, -1002118591205]  # Channels to monitor
-your_user_id = 7606329246  # Your Telegram User ID
-your_username = "@Vuxified"  # Replace with your Telegram username
+
+api_id = "REDACTED"
+api_hash = "REDACTED"  
+channel_ids = [-1002450316172, 6521948333, -1002118591205] 
+your_user_id = 7606329246 
+your_username = "@Vuxified"  
 
 # Initialize Telegram client
 client = TelegramClient('session_name', api_id, api_hash)
@@ -18,9 +18,9 @@ coin_transactions = {}
 # Function to extract links, CA, and market cap
 def extract_data(message):
     try:
-        # Extract token address
-        address_match = re.search(r"([A-Za-z0-9]{32,}pump)", message)  # Include "pump" in the address
-        token_address = address_match.group(1) if address_match else None
+        # Extract token address - match any 32+ character address for Solana
+        address_match = re.search(r"[A-Za-z0-9]{28,}", message)
+        token_address = address_match.group(0) if address_match else "Unknown"
 
         # Extract market cap
         marketcap_match = re.search(r"MC: \$([\d.,]+[KM]?)", message)
@@ -34,21 +34,37 @@ def extract_data(message):
     except Exception as e:
         print(f"Error extracting data: {e}")
         return "N/A", "N/A", "N/A", "Unknown MC"
-
+    
 # Function to calculate PnL and percentage sold
 def calculate_pnl(wallet, token, amount_sold):
     try:
         if token not in coin_transactions or wallet not in coin_transactions[token]:
             return "Unknown PnL", "Unknown Percentage"
 
-        # Retrieve original buy amount
-        total_bought = coin_transactions[token][wallet]["bought"]
+        # Get wallet's transaction data
+        wallet_data = coin_transactions[token][wallet]
+        total_bought = wallet_data["bought"]
+        total_sold = wallet_data["sold"] + amount_sold
 
-        # Calculate percentage sold and PnL
-        percentage_sold = (amount_sold / total_bought) * 100 if total_bought else 0
-        pnl = total_bought - amount_sold  # Simplified PnL; expand as needed
+        # Validate amounts
+        if total_bought <= 0:
+            return "No buys recorded", "0% sold"
 
-        return f"{pnl:.2f} PnL", f"{percentage_sold:.2f}% sold"
+        # Calculate percentage sold
+        percentage_sold = (total_sold / total_bought) * 100
+        if percentage_sold > 100:
+            percentage_sold = 100
+
+        # Calculate PnL (profit/loss)
+        # Negative PnL means loss, positive means profit
+        pnl = amount_sold - (total_bought * (amount_sold / total_bought))
+
+        # Format return values
+        pnl_str = f"+{pnl:.2f} SOL" if pnl > 0 else f"{pnl:.2f} SOL"
+        percentage_str = f"{percentage_sold:.1f}%"
+
+        return pnl_str, percentage_str
+
     except Exception as e:
         print(f"Error calculating PnL: {e}")
         return "Error in PnL", "Error in Percentage"
@@ -88,17 +104,23 @@ def process_buy_message(message):
 
                 # Check if two or more wallets bought the same coin
                 if len(coin_wallets[token]) >= 2:
+                    # Create detailed wallet purchase info
+                    wallet_details = []
+                    for buyer in coin_wallets[token]:
+                        amount = coin_transactions[token][buyer]["bought"]
+                        wallet_details.append(f"{buyer} bought {amount} SOL")
+
                     alert_message = (
-                        f"🔥🚨 BUY ALERT: {len(coin_wallets[token])} wallets have bought {token}!\n"
-                        f"Wallets: {', '.join(coin_wallets[token])}\n"
-                        f"Total Wallets in Coin: {len(coin_wallets[token])}\n"
+                        f"🔥🚨 BUY ALERT: Multiple wallets have bought {token}!\n\n"
+                        f"Purchase Details:\n"
+                        f"{chr(10).join(wallet_details)}\n\n"
                         f"Market Cap: {market_cap}\n"
                         f"Contract Address: {contract_address}\n\n"
                         f"🔗 Trojan Link: [Buy {token}]({trojan_link})\n"
                         f"📈 Bullx Link: [View {token} on Bullx]({bullx_link})\n\n"
                         f"🔔 Hey {your_username}, check this out!"
                     )
-                    print(alert_message)  # Debugging: Print alert message
+                    print(alert_message)  
                     return alert_message
     except Exception as e:
         print(f"Error processing BUY message: {e}")
@@ -125,6 +147,9 @@ def process_sell_message(message):
 
             # Only alert if more than 2 wallets have bought the token
             if token in coin_wallets and len(coin_wallets[token]) >= 2:
+                # Get initial amount bought before removing wallet
+                initial_amount = coin_transactions[token][wallet]["bought"] if token in coin_transactions and wallet in coin_transactions[token] else 0
+
                 # Remove wallet from the coin's buyer list
                 if wallet in coin_wallets[token]:
                     coin_wallets[token].remove(wallet)
@@ -136,19 +161,29 @@ def process_sell_message(message):
                 # Calculate PnL and percentage sold
                 pnl, percentage_sold = calculate_pnl(wallet, token, sell_amount)
 
+                # Get remaining wallet details
+                remaining_wallet_details = []
+                for remaining_wallet in coin_wallets[token]:
+                    amount = coin_transactions[token][remaining_wallet]["bought"]
+                    remaining_wallet_details.append(f"{remaining_wallet} ({amount} SOL)")
+
                 # Create an alert message
                 alert_message = (
-                    f"🚨 SELL ALERT: {wallet} sold {token}.\n"
-                    f"Remaining Wallets in Coin: {len(coin_wallets[token])}\n"
-                    f"Market Cap: {market_cap}\n"
-                    f"Contract Address: {contract_address}\n\n"
+                    f"🚨 SELL ALERT: {wallet} sold {token}\n\n"
+                    f"Sale Details:\n"
+                    f"Initial Investment: {initial_amount} SOL\n"
+                    f"Amount Sold: {sell_amount} SOL\n"
                     f"PnL: {pnl}\n"
                     f"Percentage Sold: {percentage_sold}\n\n"
+                    f"Remaining Wallets ({len(coin_wallets[token])}):\n"
+                    f"{chr(10).join(remaining_wallet_details)}\n\n"
+                    f"Market Cap: {market_cap}\n"
+                    f"Contract Address: {contract_address}\n\n"
                     f"🔗 Trojan Link: [Sell {token}]({trojan_link})\n"
                     f"📈 Bullx Link: [View {token} on Bullx]({bullx_link})\n\n"
                     f"🔔 Hey {your_username}, check this out!"
                 )
-                print(alert_message)  # Debugging: Print alert message
+                print(alert_message)  
                 return alert_message
     except Exception as e:
         print(f"Error processing SELL message: {e}")
@@ -158,24 +193,24 @@ def process_sell_message(message):
 @client.on(events.NewMessage(chats=channel_ids))
 async def handler(event):
     try:
-        print("Handler triggered!")  # Debugging: Confirm the handler is working
+        print("Handler triggered!")
 
         # Get the message content
         if event.message:
             message = event.message.message
-            chat_id = event.chat_id  # Get the chat ID of the message
-            if message:  # If the message has text content
-                print(f"New message received in {chat_id}: {message}")  # Print the message to the console
+            chat_id = event.chat_id  
+            if message:  
+                print(f"New message received in {chat_id}: {message}") 
 
-                # Process the message for BUY transactions
+        
                 buy_alert = process_buy_message(message)
-                if buy_alert:  # If a buy alert is generated
-                    await client.send_message(your_user_id, buy_alert, parse_mode="Markdown")  # Send alert to your Telegram
+                if buy_alert:  
+                    await client.send_message(your_user_id, buy_alert, parse_mode="Markdown")  
 
-                # Process the message for SELL transactions
+              
                 sell_alert = process_sell_message(message)
-                if sell_alert:  # If a sell alert is generated
-                    await client.send_message(your_user_id, sell_alert, parse_mode="Markdown")  # Send alert to your Telegram
+                if sell_alert: 
+                    await client.send_message(your_user_id, sell_alert, parse_mode="Markdown") 
             else:
                 print(f"Received non-text message or empty content in {chat_id}.")
         else:
