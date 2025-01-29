@@ -4,8 +4,8 @@ import re
 
 api_id = "REDACTED"
 api_hash = "REDACTED"  
-channel_ids = [-1002450316172, 6521948333, -1002118591205] 
-your_user_id = 7606329246 
+channel_ids = [-1002450316172, -1002118591205] 
+my_group = -1002438244257 
 your_username = "@Vuxified"  
 
 # Initialize Telegram client
@@ -18,7 +18,7 @@ coin_transactions = {}
 # Function to extract links, CA, and market cap
 def extract_data(message):
     try:
-        # Extract token address - match any 32+ character address for Solana
+        # Extract token address - match any 28+ character address for Solana
         address_match = re.search(r"[A-Za-z0-9]{28,}", message)
         token_address = address_match.group(0) if address_match else "Unknown"
 
@@ -75,7 +75,7 @@ def process_buy_message(message):
         if "BUY" in message:
             # Extract token name
             token_match = re.search(r"🔗 #(\w+)", message)
-            token = token_match.group(1) if token_match else None
+            token = token_match.group(1) if token_match else No=ne
 
             # Extract wallet name
             wallet_match = re.search(r"🔹 ([\w\s]+)", message)
@@ -205,12 +205,12 @@ async def handler(event):
         
                 buy_alert = process_buy_message(message)
                 if buy_alert:  
-                    await client.send_message(your_user_id, buy_alert, parse_mode="Markdown")  
+                    await client.send_message(my_group , buy_alert, parse_mode="Markdown")  
 
               
                 sell_alert = process_sell_message(message)
                 if sell_alert: 
-                    await client.send_message(your_user_id, sell_alert, parse_mode="Markdown") 
+                    await client.send_message(my_group, sell_alert, parse_mode="Markdown") 
             else:
                 print(f"Received non-text message or empty content in {chat_id}.")
         else:
