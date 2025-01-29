@@ -75,7 +75,7 @@ def process_buy_message(message):
         if "BUY" in message:
             # Extract token name
             token_match = re.search(r"🔗 #(\w+)", message)
-            token = token_match.group(1) if token_match else No=ne
+            token = token_match.group(1) if token_match else None
 
             # Extract wallet name
             wallet_match = re.search(r"🔹 ([\w\s]+)", message)
