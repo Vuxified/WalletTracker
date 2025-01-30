@@ -39,7 +39,7 @@ def extract_data(message):
 def calculate_pnl(wallet, token, amount_sold):
     try:
         if token not in coin_transactions or wallet not in coin_transactions[token]:
-            return "Unknown PnL", "Unknown Percentage"
+            return "Unknown PnL", "Unknown Percentage", "Unknown Total"
 
         # Get wallet's transaction data
         wallet_data = coin_transactions[token][wallet]
@@ -48,26 +48,31 @@ def calculate_pnl(wallet, token, amount_sold):
 
         # Validate amounts
         if total_bought <= 0:
-            return "No buys recorded", "0% sold"
+            return "No buys recorded", "0% sold", "0% total"
 
-        # Calculate percentage sold
-        percentage_sold = (total_sold / total_bought) * 100
-        if percentage_sold > 100:
-            percentage_sold = 100
+        # Calculate percentage of this sale
+        this_sale_percentage = (amount_sold / total_bought) * 100
 
-        # Calculate PnL (profit/loss)
-        # Negative PnL means loss, positive means profit
-        pnl = amount_sold - (total_bought * (amount_sold / total_bought))
+        # Calculate total percentage sold
+        total_percentage_sold = (total_sold / total_bought) * 100
+        if total_percentage_sold > 100:
+            total_percentage_sold = 100
 
-        # Format return values
-        pnl_str = f"+{pnl:.2f} SOL" if pnl > 0 else f"{pnl:.2f} SOL"
-        percentage_str = f"{percentage_sold:.1f}%"
+        # Calculate PnL (actual profit/loss)
+        # If they sold X% of their position, they should get X% of their initial investment back
+        investment_portion = total_bought * (amount_sold / total_bought)
+        pnl = amount_sold - investment_portion
+        
+        # Format return values with proper sign
+        pnl_str = f"{pnl:.2f} SOL" if pnl < 0 else f"+{pnl:.2f} SOL"
+        this_sale_str = f"{this_sale_percentage:.1f}%"
+        total_sold_str = f"{total_percentage_sold:.1f}%"
 
-        return pnl_str, percentage_str
+        return pnl_str, this_sale_str, total_sold_str
 
     except Exception as e:
         print(f"Error calculating PnL: {e}")
-        return "Error in PnL", "Error in Percentage"
+        return "Error in PnL", "Error in Percentage", "Error in Total"
 
 # Function to process BUY transactions
 def process_buy_message(message):
@@ -81,26 +86,34 @@ def process_buy_message(message):
             wallet_match = re.search(r"🔹 ([\w\s]+)", message)
             wallet = wallet_match.group(1).strip() if wallet_match else None
 
-            # Extract data
-            bullx_link, trojan_link, contract_address, market_cap = extract_data(message)
-
-            # Extract buy amount (assume in message, adjust regex as needed)
-            buy_amount_match = re.search(r"Bought: (\d+)", message)
+            # Extract buy amount - updated regex
+            buy_amount_match = re.search(r"swapped\s*([\d.]+)\s*SOL", message)
             buy_amount = float(buy_amount_match.group(1)) if buy_amount_match else 0
+
+            # Debug prints
+            print(f"DEBUG - Token: {token}")
+            print(f"DEBUG - Wallet: {wallet}")
+            print(f"DEBUG - Buy Amount: {buy_amount} SOL")
+
+            # Extract data
+            bullx_link, trojan_link, _, market_cap = extract_data(message)
 
             if token and wallet:
                 # Initialize coin in tracker if not present
                 if token not in coin_wallets:
                     coin_wallets[token] = set()
                     coin_transactions[token] = {}
+                    print(f"DEBUG - New token initialized: {token}")
 
                 # Add wallet to coin's buyer list
                 coin_wallets[token].add(wallet)
+                print(f"DEBUG - Added wallet {wallet} to {token} buyers")
 
                 # Track transactions
                 if wallet not in coin_transactions[token]:
                     coin_transactions[token][wallet] = {"bought": 0, "sold": 0}
                 coin_transactions[token][wallet]["bought"] += buy_amount
+                print(f"DEBUG - Updated transactions for {wallet} on {token}: {coin_transactions[token][wallet]}")
 
                 # Check if two or more wallets bought the same coin
                 if len(coin_wallets[token]) >= 2:
@@ -115,10 +128,8 @@ def process_buy_message(message):
                         f"Purchase Details:\n"
                         f"{chr(10).join(wallet_details)}\n\n"
                         f"Market Cap: {market_cap}\n"
-                        f"Contract Address: {contract_address}\n\n"
                         f"🔗 Trojan Link: [Buy {token}]({trojan_link})\n"
                         f"📈 Bullx Link: [View {token} on Bullx]({bullx_link})\n\n"
-                        f"🔔 Hey {your_username}, check this out!"
                     )
                     print(alert_message)  
                     return alert_message
@@ -130,20 +141,25 @@ def process_buy_message(message):
 def process_sell_message(message):
     try:
         if "SELL" in message:
-            # Extract token name
-            token_match = re.search(r"🔗 #(\w+)", message)
+            # Extract token name - updated regex
+            token_match = re.search(r"(?:SELL|#)\s*(\w+)", message)
             token = token_match.group(1) if token_match else None
 
             # Extract wallet name
-            wallet_match = re.search(r"🔹 ([\w\s]+)", message)
+            wallet_match = re.search(r"🔹\s*([\w\s]+)", message)
             wallet = wallet_match.group(1).strip() if wallet_match else None
 
-            # Extract data
-            bullx_link, trojan_link, contract_address, market_cap = extract_data(message)
-
-            # Extract sell amount (assume in message, adjust regex as needed)
-            sell_amount_match = re.search(r"Sold: (\d+)", message)
+            # Extract sell amount - updated regex
+            sell_amount_match = re.search(r"for\s*([\d.]+)\s*SOL", message)
             sell_amount = float(sell_amount_match.group(1)) if sell_amount_match else 0
+
+            # Debug prints
+            print(f"DEBUG - Token: {token}")
+            print(f"DEBUG - Wallet: {wallet}")
+            print(f"DEBUG - Sell Amount: {sell_amount} SOL")
+
+            # Extract data
+            bullx_link, trojan_link, _, market_cap = extract_data(message)
 
             # Only alert if more than 2 wallets have bought the token
             if token in coin_wallets and len(coin_wallets[token]) >= 2:
@@ -158,8 +174,8 @@ def process_sell_message(message):
                 if token in coin_transactions and wallet in coin_transactions[token]:
                     coin_transactions[token][wallet]["sold"] += sell_amount
 
-                # Calculate PnL and percentage sold
-                pnl, percentage_sold = calculate_pnl(wallet, token, sell_amount)
+                # Calculate PnL and percentages
+                pnl, this_sale_percentage, total_sold_percentage = calculate_pnl(wallet, token, sell_amount)
 
                 # Get remaining wallet details
                 remaining_wallet_details = []
@@ -171,17 +187,16 @@ def process_sell_message(message):
                 alert_message = (
                     f"🚨 SELL ALERT: {wallet} sold {token}\n\n"
                     f"Sale Details:\n"
-                    f"Initial Investment: {initial_amount} SOL\n"
-                    f"Amount Sold: {sell_amount} SOL\n"
+                    f"Initial Investment: {initial_amount:.2f} SOL\n"
+                    f"Amount Sold: {sell_amount:.2f} SOL\n"
                     f"PnL: {pnl}\n"
-                    f"Percentage Sold: {percentage_sold}\n\n"
+                    f"This Sell: {this_sale_percentage}\n"
+                    f"Total Sold: {total_sold_percentage}\n\n"
                     f"Remaining Wallets ({len(coin_wallets[token])}):\n"
                     f"{chr(10).join(remaining_wallet_details)}\n\n"
                     f"Market Cap: {market_cap}\n"
-                    f"Contract Address: {contract_address}\n\n"
                     f"🔗 Trojan Link: [Sell {token}]({trojan_link})\n"
                     f"📈 Bullx Link: [View {token} on Bullx]({bullx_link})\n\n"
-                    f"🔔 Hey {your_username}, check this out!"
                 )
                 print(alert_message)  
                 return alert_message
@@ -202,15 +217,23 @@ async def handler(event):
             if message:  
                 print(f"New message received in {chat_id}: {message}") 
 
-        
                 buy_alert = process_buy_message(message)
                 if buy_alert:  
-                    await client.send_message(my_group , buy_alert, parse_mode="Markdown")  
+                    await client.send_message(
+                        my_group,
+                        buy_alert,
+                        parse_mode="Markdown",
+                        reply_to=247 
+                    )
 
-              
                 sell_alert = process_sell_message(message)
                 if sell_alert: 
-                    await client.send_message(my_group, sell_alert, parse_mode="Markdown") 
+                    await client.send_message(
+                        my_group,
+                        sell_alert,
+                        parse_mode="Markdown",
+                        reply_to=247 
+                    )
             else:
                 print(f"Received non-text message or empty content in {chat_id}.")
         else:
