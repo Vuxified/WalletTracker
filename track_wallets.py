@@ -1,9 +1,10 @@
+import os
 from telethon import TelegramClient, events
 import re
 
 
-api_id = "REDACTED"
-api_hash = "REDACTED"  
+api_id = os.getenv("API_ID")
+api_hash = os.getenv("API_HASH")  
 channel_ids = [-1002450316172, -1002118591205] 
 my_group = -1002438244257 
 your_username = "@Vuxified"  

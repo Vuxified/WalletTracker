@@ -1,8 +1,9 @@
+import os
 from telethon import TelegramClient, events, functions
 
 # Your Telegram API credentials
-api_id = "REDACTED"
-api_hash = "REDACTED"
+api_id = os.getenv("API_ID")
+api_hash = os.getenv("API_HASH")
 
 # Bugise's Channel ID with -100 prefix
 channel_id = -1002438244257
